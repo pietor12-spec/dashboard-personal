@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#080c12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dashboard">
+<title>Dashboard Personal</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icons/logo.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+:root{--bg:#080c12;--surface:#0d1420;--border:#1d2d42;--cyan:#00F0FF;--em:#00FFA3;--text:#e8f4fc;--muted:#6d8fb0;--red:#ff4d6d;}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:radial-gradient(1200px 600px at 50% -10%,#0f2236 0%,var(--bg) 60%);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px 16px;}
+.card{width:100%;max-width:380px;background:rgba(13,20,32,.85);border:1px solid var(--border);border-radius:20px;padding:32px 26px;box-shadow:0 0 60px rgba(0,240,255,.07);}
+.brand{display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:26px;text-align:center}
+.brand img{width:84px;height:84px;filter:drop-shadow(0 0 18px rgba(0,240,255,.25))}
+.brand h1{font-size:22px;font-weight:800;letter-spacing:-.4px}
+.brand h1 span{color:var(--cyan)}
+.brand p{font-size:13px;color:var(--muted)}
+label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px}
+input[type=password],input[type=text]{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:#08111c;color:var(--text);font-size:16px;outline:none}
+input:focus{border-color:var(--cyan)}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-top:14px;cursor:pointer}
+.chk input{accent-color:var(--em);width:16px;height:16px}
+button.main{width:100%;margin-top:20px;padding:13px;border:none;border-radius:12px;font-weight:700;font-size:15px;color:#001018;background:linear-gradient(135deg,var(--cyan),var(--em));cursor:pointer}
+button.main:disabled{opacity:.5;cursor:wait}
+.link{display:block;margin:16px auto 0;background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline}
+.msg{margin-top:14px;font-size:13px;min-height:18px;text-align:center}
+.msg.err{color:var(--red)} .msg.ok{color:var(--em)}
+.help{font-size:12px;color:var(--muted);line-height:1.5;margin-top:6px}
+.help code{color:var(--cyan)}
+.hidden{display:none}
+.spin{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:s 0.9s linear infinite;margin:10px auto}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <img src="icons/logo.svg" alt="Logo Dashboard Personal">
+    <div><h1>Dashboard <span>Personal</span></h1><p id="sub">Acceso privado</p></div>
+  </div>
+
+  <!-- Login -->
+  <form id="vLogin" class="hidden" autocomplete="on">
+    <input type="text" name="username" value="dashboard-personal" autocomplete="username" class="hidden" readonly>
+    <label for="pw">Contraseña</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <label class="chk"><input id="remember" type="checkbox" checked> Recordar en este dispositivo</label>
+    <button class="main" type="submit">Entrar</button>
+    <div class="msg" id="mLogin"></div>
+    <button class="link" type="button" id="toSetup">Configurar de nuevo / cambiar contraseña</button>
+  </form>
+
+  <!-- Setup -->
+  <form id="vSetup" class="hidden" autocomplete="off">
+    <p class="help">Primera configuración. Pega tu <b>token de GitHub</b> (fine‑grained, con acceso de <i>Contents: Read and write</i> a los repos <code>dashboard-personal</code> y <code>dashboard-personal-data</code>) y elige una contraseña. El token se guarda cifrado con tu contraseña.</p>
+    <label for="tok">Token de GitHub</label>
+    <input id="tok" type="password" placeholder="github_pat_…" required>
+    <label for="np1">Contraseña nueva (mín. 10 caracteres)</label>
+    <input id="np1" type="password" autocomplete="new-password" minlength="10" required>
+    <label for="np2">Repite la contraseña</label>
+    <input id="np2" type="password" autocomplete="new-password" minlength="10" required>
+    <button class="main" type="submit">Guardar y entrar</button>
+    <div class="msg" id="mSetup"></div>
+    <button class="link hidden" type="button" id="toLogin">Volver</button>
+  </form>
+
+  <!-- Cargando -->
+  <div id="vLoad" class="hidden" style="text-align:center">
+    <div class="spin"></div>
+    <div class="msg" id="mLoad">Cargando…</div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const OWNER='pietor12-spec', PUB='dashboard-personal', DATA='dashboard-personal-data', BRANCH='main';
+const API='https://api.github.com';
+const ITER=600000;
+const SKIP_SYNC=new Set(['portfolio_autosave_history']); // copias locales, no se sincronizan
+const P='__dp_'; // prefijo de claves propias del cargador
+const $=id=>document.getElementById(id);
+const show=v=>{['vLogin','vSetup','vLoad'].forEach(x=>$(x).classList.toggle('hidden',x!==v));};
+const msg=(id,t,c)=>{const e=$(id);e.textContent=t||'';e.className='msg'+(c?' '+c:'');};
+
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+
+// ───────── utilidades ─────────
+const te=new TextEncoder(), td=new TextDecoder();
+function b64e(bytes){let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));return btoa(s);}
+function b64d(str){const s=atob(str.replace(/\s/g,''));const u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u;}
+async function deriveKey(pw,salt,iter){
+  const base=await crypto.subtle.importKey('raw',te.encode(pw),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function encrypt(key,obj){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,te.encode(JSON.stringify(obj))));return{iv:b64e(iv),ct:b64e(ct)};}
+async function decrypt(key,v){const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(v.iv)},key,b64d(v.ct));return JSON.parse(td.decode(pt));}
+
+// IndexedDB: guarda la clave (no exportable) para "recordar dispositivo"
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('dp',1);r.onupgradeneeded=()=>r.result.createObjectStore('k');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function idbGet(k){try{const db=await idb();return await new Promise(r=>{const q=db.transaction('k').objectStore('k').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(null);});}catch(e){return null;}}
+async function idbSet(k,v){try{const db=await idb();await new Promise(r=>{const t=db.transaction('k','readwrite');t.objectStore('k').put(v,k);t.oncomplete=r;t.onerror=r;});}catch(e){}}
+async function idbDel(k){try{const db=await idb();await new Promise(r=>{const t=db.transaction('k','readwrite');t.objectStore('k').delete(k);t.oncomplete=r;t.onerror=r;});}catch(e){}}
+
+const LS=window.localStorage;
+const _set=Storage.prototype.setItem, _rem=Storage.prototype.removeItem, _clr=Storage.prototype.clear;
+const lget=k=>{try{return LS.getItem(k);}catch(e){return null;}};
+const lset=(k,v)=>{try{_set.call(LS,k,v);}catch(e){}};
+const ldel=k=>{try{_rem.call(LS,k);}catch(e){}};
+
+// ───────── GitHub API ─────────
+let TOKEN=null;
+function gh(path,opt={}){
+  const h=Object.assign({'Authorization':'Bearer '+TOKEN,'X-GitHub-Api-Version':'2022-11-28','Accept':'application/vnd.github+json'},opt.headers||{});
+  return fetch(API+path,Object.assign({},opt,{headers:h,cache:'no-store'}));
+}
+async function getMeta(repo,file){const r=await gh(`/repos/${OWNER}/${repo}/contents/${file}?ref=${BRANCH}`);if(r.status===404)return null;if(!r.ok)throw new Error('GitHub '+r.status);return r.json();}
+async function getText(repo,file){
+  const m=await getMeta(repo,file); if(!m) return null;
+  let b64=m.content;
+  if(!b64||m.encoding!=='base64'){const r=await gh(`/repos/${OWNER}/${repo}/git/blobs/${m.sha}`);if(!r.ok)throw new Error('GitHub '+r.status);b64=(await r.json()).content;}
+  return {sha:m.sha,text:td.decode(b64d(b64))};
+}
+async function putText(repo,file,text,sha,message){
+  const body={message,content:b64e(te.encode(text)),branch:BRANCH};if(sha)body.sha=sha;
+  const r=await gh(`/repos/${OWNER}/${repo}/contents/${file}`,{method:'PUT',body:JSON.stringify(body),headers:{'Content-Type':'application/json'}});
+  if(!r.ok){const e=new Error('GitHub '+r.status);e.status=r.status;throw e;}
+  return (await r.json()).content.sha;
+}
+
+// ───────── vault (token cifrado, público pero ilegible sin contraseña) ─────────
+async function fetchVault(){
+  try{const r=await fetch('vault.json?t='+Date.now(),{cache:'no-store'});if(r.ok){const v=await r.json();lset(P+'vault',JSON.stringify(v));return v;}}catch(e){}
+  const c=lget(P+'vault');return c?JSON.parse(c):null;
+}
+
+async function start(){
+  const vault=await fetchVault();
+  if(!vault){show('vSetup');return;}
+  $('toLogin').classList.remove('hidden');
+  const key=await idbGet('key');
+  if(key){
+    try{const s=await decrypt(key,vault);TOKEN=s.token;return boot();}catch(e){await idbDel('key');}
+  }
+  show('vLogin');setTimeout(()=>$('pw').focus(),50);
+}
+
+$('vLogin').addEventListener('submit',async e=>{
+  e.preventDefault();const btn=e.target.querySelector('button.main');btn.disabled=true;msg('mLogin','Comprobando…');
+  try{
+    const vault=await fetchVault();
+    const key=await deriveKey($('pw').value,b64d(vault.salt),vault.iter||ITER);
+    const s=await decrypt(key,vault);TOKEN=s.token;
+    if($('remember').checked)await idbSet('key',key);
+    $('pw').value='';boot();
+  }catch(err){msg('mLogin','Contraseña incorrecta','err');btn.disabled=false;}
+});
+$('toSetup').onclick=()=>{show('vSetup');msg('mSetup','');};
+$('toLogin').onclick=()=>show('vLogin');
+
+$('vSetup').addEventListener('submit',async e=>{
+  e.preventDefault();const btn=e.target.querySelector('button.main');
+  const tok=$('tok').value.trim(),p1=$('np1').value,p2=$('np2').value;
+  if(p1!==p2)return msg('mSetup','Las contraseñas no coinciden','err');
+  if(p1.length<10)return msg('mSetup','Mínimo 10 caracteres','err');
+  btn.disabled=true;msg('mSetup','Verificando token…');
+  try{
+    TOKEN=tok;
+    const r=await gh(`/repos/${OWNER}/${DATA}`);
+    if(!r.ok)throw new Error('El token no tiene acceso al repositorio de datos ('+r.status+')');
+    const salt=crypto.getRandomValues(new Uint8Array(16));
+    msg('mSetup','Cifrando…');
+    const key=await deriveKey(p1,salt,ITER);
+    const enc=await encrypt(key,{token:tok});
+    const vault={v:1,iter:ITER,salt:b64e(salt),iv:enc.iv,ct:enc.ct};
+    const old=await getMeta(PUB,'vault.json');
+    await putText(PUB,'vault.json',JSON.stringify(vault),old&&old.sha,'Actualizar acceso cifrado');
+    lset(P+'vault',JSON.stringify(vault));
+    await idbSet('key',key);
+    $('tok').value=$('np1').value=$('np2').value='';
+    boot();
+  }catch(err){msg('mSetup',err.message||String(err),'err');btn.disabled=false;}
+});
+
+// ───────── carga de la app + sincronización ─────────
+let dataSha=null, pushTimer=null, pushing=false, again=false, status='ok';
+function meta(){try{return JSON.parse(lget(P+'meta'))||{};}catch(e){return{};}}
+function setMeta(m){lset(P+'meta',JSON.stringify(m));}
+function appKeys(){const out=[];for(let i=0;i<LS.length;i++){const k=LS.key(i);if(k&&!k.startsWith(P)&&!SKIP_SYNC.has(k))out.push(k);}return out;}
+function snapshot(){const items={};appKeys().forEach(k=>items[k]=LS.getItem(k));return items;}
+
+async function boot(){
+  show('vLoad');msg('mLoad','Descargando tu dashboard…');
+  let html=null;
+  try{
+    const r=await gh(`/repos/${OWNER}/${DATA}/contents/app.html?ref=${BRANCH}`,{headers:{'Accept':'application/vnd.github.raw+json'}});
+    if(!r.ok)throw new Error('GitHub '+r.status);
+    html=await r.text();
+    try{const c=await caches.open('dp-app');await c.put('app.html',new Response(html,{headers:{'Content-Type':'text/html'}}));}catch(e){}
+  }catch(e){
+    try{const c=await caches.open('dp-app');const m=await c.match('app.html');if(m)html=await m.text();}catch(_){}
+    if(!html){
+      if(e.message==='GitHub 401'){await idbDel('key');show('vSetup');msg('mSetup','El token ha caducado o no es válido. Configura uno nuevo.','err');return;}
+      show('vLoad');msg('mLoad','No se pudo cargar la app ('+e.message+'). Revisa la conexión.','err');return;
+    }
+    status='offline';
+  }
+
+  msg('mLoad','Sincronizando datos…');
+  try{
+    const d=await getText(DATA,'data.json');
+    const m=meta();
+    if(d){
+      dataSha=d.sha;
+      const remote=JSON.parse(d.text);
+      const localNewer=m.dirty&&(m.dirtyAt||0)>Date.parse(remote.updated||0);
+      if(localNewer){schedulePush(500);}
+      else{
+        const keep=new Set(Object.keys(remote.items||{}));
+        appKeys().forEach(k=>{if(!keep.has(k))ldel(k);});
+        Object.entries(remote.items||{}).forEach(([k,v])=>lset(k,v));
+        setMeta({rev:remote.updated,dirty:false});
+      }
+    }else if(appKeys().length){schedulePush(500);}
+  }catch(e){status='offline';}
+
+  installHooks();
+  document.open();document.write(html);document.close();
+  postHooks();
+  if(document.body)addBadge();else document.addEventListener('DOMContentLoaded',addBadge);
+}
+
+function installHooks(){
+  const touch=k=>{if(k&&(String(k).startsWith(P)||SKIP_SYNC.has(String(k))))return;markDirty();};
+  Storage.prototype.setItem=function(k,v){const same=this===LS&&LS.getItem(k)===String(v);_set.call(this,k,v);if(this===LS&&!same)touch(k);};
+  Storage.prototype.removeItem=function(k){const had=this===LS&&LS.getItem(k)!==null;_rem.call(this,k);if(had)touch(k);};
+  Storage.prototype.clear=function(){const keep={};if(this===LS){for(let i=0;i<LS.length;i++){const k=LS.key(i);if(k.startsWith(P))keep[k]=LS.getItem(k);}}_clr.call(this);if(this===LS){Object.entries(keep).forEach(([k,v])=>_set.call(LS,k,v));markDirty();}};
+}
+// tras document.open() se borran los listeners: se registran después de escribir la app
+function postHooks(){
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden'){if(meta().dirty)pushNow();}
+    else checkRemote();
+  });
+  window.addEventListener('online',()=>{if(meta().dirty)pushNow();});
+}
+function markDirty(){const m=meta();m.dirty=true;m.dirtyAt=Date.now();setMeta(m);setStatus('pending');schedulePush(2500);}
+function schedulePush(ms){clearTimeout(pushTimer);pushTimer=setTimeout(pushNow,ms);}
+async function pushNow(){
+  clearTimeout(pushTimer);
+  if(pushing){again=true;return;}
+  pushing=true;setStatus('saving');
+  const updated=new Date().toISOString();
+  const body=JSON.stringify({v:1,updated,items:snapshot()});
+  try{
+    try{dataSha=await putText(DATA,'data.json',body,dataSha,'Datos '+updated);}
+    catch(e){
+      if(e.status===409||e.status===422){const m=await getMeta(DATA,'data.json');dataSha=await putText(DATA,'data.json',body,m&&m.sha,'Datos '+updated);}
+      else throw e;
+    }
+    const m=meta();if(!again&&(m.dirtyAt||0)<=Date.parse(updated))setMeta({rev:updated,dirty:false});
+    setStatus('ok');
+  }catch(e){setStatus(navigator.onLine?'error':'offline');}
+  pushing=false;
+  if(again){again=false;schedulePush(800);}
+}
+async function checkRemote(){
+  if(meta().dirty)return;
+  try{const m=await getMeta(DATA,'data.json');if(m&&dataSha&&m.sha!==dataSha)toast();}catch(e){}
+}
+
+// ───────── indicador de sincronización ─────────
+const LABEL={ok:'☁ Sincronizado',pending:'● Cambios sin guardar',saving:'⟳ Guardando…',offline:'⚠ Sin conexión',error:'⚠ Error al guardar'};
+const COLOR={ok:'#00FFA3',pending:'#ffd740',saving:'#00F0FF',offline:'#ffb74d',error:'#ff4d6d'};
+function setStatus(s){status=s;const b=document.getElementById('dp-sync');if(b){b.firstChild.textContent=LABEL[s];b.style.color=COLOR[s];b.style.borderColor=COLOR[s]+'55';}}
+function addBadge(){
+  const css=document.createElement('style');
+  css.textContent='#dp-sync{position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:99999;font:600 11px/1 system-ui,sans-serif;padding:7px 11px;border-radius:999px;background:rgba(8,12,18,.88);border:1px solid;cursor:pointer;backdrop-filter:blur(8px);user-select:none}#dp-menu{display:none;position:absolute;bottom:32px;left:0;background:#0d1420;border:1px solid #1d2d42;border-radius:12px;overflow:hidden;min-width:220px}#dp-menu.open{display:block}#dp-menu div{padding:11px 14px;color:#e8f4fc;font-weight:500;white-space:nowrap}#dp-menu div:hover{background:#13213a}#dp-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(56px + env(safe-area-inset-bottom));z-index:99999;background:#0d1420;border:1px solid #00F0FF66;color:#e8f4fc;font:500 13px system-ui,sans-serif;padding:10px 14px;border-radius:12px;display:flex;gap:10px;align-items:center}#dp-toast button{background:linear-gradient(135deg,#00F0FF,#00FFA3);border:0;border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer}@media print{#dp-sync,#dp-toast{display:none}}';
+  document.head.appendChild(css);
+  const b=document.createElement('div');b.id='dp-sync';b.appendChild(document.createTextNode(''));
+  const menu=document.createElement('div');menu.id='dp-menu';
+  menu.innerHTML='<div data-a="sync">⟳ Sincronizar ahora</div><div data-a="reload">↻ Recargar datos de la nube</div><div data-a="lock">🔒 Bloquear este dispositivo</div>';
+  b.appendChild(menu);
+  b.addEventListener('click',e=>{const a=e.target.dataset&&e.target.dataset.a;
+    if(!a){menu.classList.toggle('open');return;}
+    menu.classList.remove('open');
+    if(a==='sync')pushNow();
+    if(a==='reload'){if(meta().dirty&&!confirm('Hay cambios sin subir. ¿Descartarlos y recargar desde la nube?'))return;const m=meta();m.dirty=false;setMeta(m);location.reload();}
+    if(a==='lock'){idbDel('key').then(()=>location.reload());}
+  });
+  document.body.appendChild(b);setStatus(status==='ok'&&meta().dirty?'pending':status);
+}
+function toast(){
+  if(document.getElementById('dp-toast'))return;
+  const t=document.createElement('div');t.id='dp-toast';
+  t.innerHTML='Hay datos nuevos de otro dispositivo <button>Actualizar</button>';
+  t.querySelector('button').onclick=()=>location.reload();
+  document.body.appendChild(t);
+}
+
+start();
+})();
+</script>
+</body>
+</html>
