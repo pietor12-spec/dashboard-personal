@@ -125,7 +125,7 @@ function gh(path,opt={}){
   const h=Object.assign({'Authorization':'Bearer '+TOKEN,'X-GitHub-Api-Version':'2022-11-28','Accept':'application/vnd.github+json'},opt.headers||{});
   return fetch(API+path,Object.assign({},opt,{headers:h,cache:'no-store'}));
 }
-async function getMeta(repo,file){const r=await gh(`/repos/${OWNER}/${repo}/contents/${file}?ref=${BRANCH}`);if(r.status===404)return null;if(!r.ok)throw new Error('GitHub '+r.status);return r.json();}
+async function getMeta(repo,file){const r=await gh(`/repos/${OWNER}/${repo}/contents/${file}?ref=${BRANCH}&_=${Date.now()}`);if(r.status===404)return null;if(!r.ok)throw new Error('GitHub '+r.status);return r.json();}
 async function getText(repo,file){
   const m=await getMeta(repo,file); if(!m) return null;
   let b64=m.content;
@@ -224,13 +224,16 @@ async function boot(){
     if(d){
       dataSha=d.sha;
       const remote=JSON.parse(d.text);
-      const localNewer=m.dirty&&(m.dirtyAt||0)>Date.parse(remote.updated||0);
+      const rT=Date.parse(remote.updated||0)||0, lT=Date.parse(m.rev||0)||0;
+      const localNewer=m.dirty&&(m.dirtyAt||0)>rT;
+      const staleRemote=lT>rT; // GitHub a veces devuelve una versión anterior justo después de guardar
       if(localNewer){schedulePush(500);}
+      else if(staleRemote||(m.sha&&m.sha===d.sha)){ if(m.dirty)schedulePush(500); }
       else{
         const keep=new Set(Object.keys(remote.items||{}));
         appKeys().forEach(k=>{if(!keep.has(k))ldel(k);});
         Object.entries(remote.items||{}).forEach(([k,v])=>lset(k,v));
-        setMeta({rev:remote.updated,dirty:false});
+        setMeta({rev:remote.updated,dirty:false,sha:d.sha});
       }
     }else if(appKeys().length){schedulePush(500);}
   }catch(e){status='offline';}
@@ -264,12 +267,19 @@ async function pushNow(){
   const updated=new Date().toISOString();
   const body=JSON.stringify({v:1,updated,items:snapshot()});
   try{
-    try{dataSha=await putText(DATA,'data.json',body,dataSha,'Datos '+updated);}
-    catch(e){
-      if(e.status===409||e.status===422){const m=await getMeta(DATA,'data.json');dataSha=await putText(DATA,'data.json',body,m&&m.sha,'Datos '+updated);}
-      else throw e;
+    let ok=false,lastErr=null;
+    for(let i=0;i<4&&!ok;i++){
+      try{dataSha=await putText(DATA,'data.json',body,dataSha,'Datos '+updated);ok=true;}
+      catch(e){
+        lastErr=e;
+        if(e.status===409||e.status===422){await new Promise(r=>setTimeout(r,800*(i+1)));const mm=await getMeta(DATA,'data.json');dataSha=mm&&mm.sha;}
+        else throw e;
+      }
     }
-    const m=meta();if(!again&&(m.dirtyAt||0)<=Date.parse(updated))setMeta({rev:updated,dirty:false});
+    if(!ok)throw lastErr;
+    const m=meta();
+    if(!again&&(m.dirtyAt||0)<=Date.parse(updated))setMeta({rev:updated,dirty:false,sha:dataSha});
+    else{m.rev=updated;m.sha=dataSha;setMeta(m);}
     setStatus('ok');
   }catch(e){setStatus(navigator.onLine?'error':'offline');}
   pushing=false;
@@ -277,7 +287,7 @@ async function pushNow(){
 }
 async function checkRemote(){
   if(meta().dirty)return;
-  try{const m=await getMeta(DATA,'data.json');if(m&&dataSha&&m.sha!==dataSha)toast();}catch(e){}
+  try{const mm=await getMeta(DATA,'data.json');if(!(mm&&dataSha&&mm.sha!==dataSha))return;const d=await getText(DATA,'data.json');const r=JSON.parse(d.text);if((Date.parse(r.updated||0)||0)>(Date.parse(meta().rev||0)||0))toast();}catch(e){}
 }
 
 // ───────── indicador de sincronización ─────────
@@ -296,7 +306,7 @@ function addBadge(){
     if(!a){menu.classList.toggle('open');return;}
     menu.classList.remove('open');
     if(a==='sync')pushNow();
-    if(a==='reload'){if(meta().dirty&&!confirm('Hay cambios sin subir. ¿Descartarlos y recargar desde la nube?'))return;const m=meta();m.dirty=false;setMeta(m);location.reload();}
+    if(a==='reload'){if(meta().dirty&&!confirm('Hay cambios sin subir. ¿Descartarlos y recargar desde la nube?'))return;setMeta({});location.reload();}
     if(a==='lock'){idbDel('key').then(()=>location.reload());}
   });
   document.body.appendChild(b);setStatus(status==='ok'&&meta().dirty?'pending':status);
