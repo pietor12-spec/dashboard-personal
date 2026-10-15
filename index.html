@@ -23,7 +23,7 @@ body{background:radial-gradient(1200px 600px at 50% -10%,#0f2236 0%,var(--bg) 60
 .card{width:100%;max-width:380px;background:rgba(13,20,32,.85);border:1px solid var(--border);border-radius:20px;padding:32px 26px;box-shadow:0 0 60px rgba(0,240,255,.07);}
 .brand{display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:26px;text-align:center}
 .brand img{width:84px;height:84px;filter:drop-shadow(0 0 18px rgba(0,240,255,.25))}
-.brand h1{font-size:22px;font-weight:800;letter-spacing:-.4px}
+.brand h1{font-size:24px;font-weight:800;letter-spacing:-.4px}
 .brand h1 span{color:var(--cyan)}
 .brand p{font-size:13px;color:var(--muted)}
 label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px}
@@ -46,8 +46,9 @@ button.main:disabled{opacity:.5;cursor:wait}
 <body>
 <div class="card">
   <div class="brand">
+    <h1>Dashboard <span>Personal</span></h1>
     <img src="icons/logo.svg" alt="Logo Dashboard Personal">
-    <div><h1>Dashboard <span>Personal</span></h1><p id="sub">Acceso privado</p></div>
+    <p id="sub">Acceso privado</p>
   </div>
 
   <!-- Login -->
